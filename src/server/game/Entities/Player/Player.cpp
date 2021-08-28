@@ -2614,10 +2614,10 @@ void Player::InitStatsForLevel(bool reapplyMods)
         pet->SynchronizeLevelWithOwner();
 }
 
-void Player::SendKnownSpells()
+void Player::SendKnownSpells(bool firstLogin /*= false*/)
 {
     WorldPackets::Spells::SendKnownSpells knownSpells;
-    knownSpells.InitialLogin = false; /// @todo
+    knownSpells.InitialLogin = firstLogin;
 
     knownSpells.KnownSpells.reserve(m_spells.size());
     for (PlayerSpellMap::value_type const& spell : m_spells)
@@ -5521,7 +5521,7 @@ void Player::SetSkill(uint16 id, uint16 step, uint16 newVal, uint16 maxVal)
         // Find a free skill slot
         for (uint32 i = 0; i < PLAYER_MAX_SKILLS; ++i)
         {
-            if (!GetUInt16Value(PLAYER_SKILL_LINEID_0 + i / 2, i % 1))
+            if (!GetUInt16Value(PLAYER_SKILL_LINEID_0 + i / 2, i & 1))
             {
                 skillSlot = i;
                 break;
@@ -17169,8 +17169,8 @@ bool Player::LoadFromDB(ObjectGuid guid, CharacterDatabaseQueryHolder const& hol
                     if (!Trinity::IsValidMapCoord(x, y, z, o) ||
                         // transport size limited
                         std::fabs(m_movementInfo.transport.pos.GetPositionX()) > 250.0f ||
-                        std::fabs(m_movementInfo.transport.pos.GetPositionX()) > 250.0f ||
-                        std::fabs(m_movementInfo.transport.pos.GetPositionX()) > 250.0f)
+                        std::fabs(m_movementInfo.transport.pos.GetPositionY()) > 250.0f ||
+                        std::fabs(m_movementInfo.transport.pos.GetPositionZ()) > 250.0f)
                     {
                         TC_LOG_ERROR("entities.player", "Player (%s) have invalid transport coordinates (X: %f Y: %f Z: %f O: %f). Teleport to bind location.",
                             guid.ToString().c_str(), x, y, z, o);
@@ -23341,7 +23341,7 @@ void Player::SetGroup(Group* group, int8 subgroup)
     UpdateObjectVisibility(false);
 }
 
-void Player::SendInitialPacketsBeforeAddToMap()
+void Player::SendInitialPacketsBeforeAddToMap(bool firstLogin /*= false*/)
 {
     /// SMSG_CONTROL_UPDATE
     SetClientControl(this, true);
@@ -23363,7 +23363,7 @@ void Player::SendInitialPacketsBeforeAddToMap()
     SendProficiency(ITEM_CLASS_ARMOR, m_ArmorProficiency);
 
     /// SMSG_SEND_KNOWN_SPELLS
-    SendKnownSpells();
+    SendKnownSpells(firstLogin);
 
     /// SMSG_SEND_UNLEARN_SPELLS
     SendDirectMessage(WorldPackets::Spells::SendUnlearnSpells().Write());
