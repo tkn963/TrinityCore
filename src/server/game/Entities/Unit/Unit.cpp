@@ -775,20 +775,6 @@ uint32 Unit::DealDamage(Unit* victim, uint32 damage, CleanDamage const* cleanDam
         }
     }
 
-    if (victim->getRace() == RACE_WORGEN && victim->ToPlayer())
-    {
-        if (Player* worgenVictm = victim->ToPlayer())
-            if (worgenVictm->HasSpell(SPELL_TWO_FORMS_RACIAL) && !worgenVictm->HasAura(SPELL_ALTERED_FORM_RACIAL))
-                worgenVictm->CastSpell(worgenVictm, SPELL_ALTERED_FORM_RACIAL, true);
-    }
-
-    if (getRace() == RACE_WORGEN && ToPlayer())
-    {
-        if (Player* worgenPlayer = ToPlayer())
-            if (worgenPlayer->HasSpell(SPELL_TWO_FORMS_RACIAL) && !HasAura(SPELL_ALTERED_FORM_RACIAL))
-                CastSpell(worgenPlayer, SPELL_ALTERED_FORM_RACIAL, true);
-    }
-
     if (victim->IsAIEnabled)
         victim->GetAI()->DamageTaken(this, damage);
 
@@ -1308,7 +1294,7 @@ void Unit::CalculateMeleeDamage(Unit* victim, uint32 damage, CalcDamageInfo* dam
        return;
     }
 
-    damage += CalculateDamage(damageInfo->attackType, false, true);
+    damage += CalculateDamage(damageInfo->attackType, IsInFeralForm(), true);
     // Add melee damage bonus
     damage = MeleeDamageBonusDone(damageInfo->target, damage, damageInfo->attackType);
     damage = damageInfo->target->MeleeDamageBonusTaken(this, damage, damageInfo->attackType);
@@ -2852,7 +2838,7 @@ float Unit::GetUnitCriticalChanceDone(WeaponAttackType attackType) const
     return chance;
 }
 
-float Unit::GetUnitCriticalChanceTaken(Unit const* attacker, WeaponAttackType attackType, float critDone) const
+float Unit::GetUnitCriticalChanceTaken(WeaponAttackType attackType, float critDone) const
 {
     float chance = critDone;
 
@@ -2861,13 +2847,6 @@ float Unit::GetUnitCriticalChanceTaken(Unit const* attacker, WeaponAttackType at
         chance += GetTotalAuraModifier(SPELL_AURA_MOD_ATTACKER_RANGED_CRIT_CHANCE);
     else
         chance += GetTotalAuraModifier(SPELL_AURA_MOD_ATTACKER_MELEE_CRIT_CHANCE);
-
-    chance += GetTotalAuraModifier(SPELL_AURA_MOD_CRIT_CHANCE_FOR_CASTER, [attacker](AuraEffect const* aurEff) -> bool
-    {
-        if (aurEff->GetCasterGUID() == attacker->GetGUID())
-            return true;
-        return false;
-    });
 
     // applied after resilience
     chance += GetTotalAuraModifier(SPELL_AURA_MOD_ATTACKER_SPELL_AND_WEAPON_CRIT_CHANCE);
@@ -2878,7 +2857,7 @@ float Unit::GetUnitCriticalChanceTaken(Unit const* attacker, WeaponAttackType at
 float Unit::GetUnitCriticalChanceAgainst(WeaponAttackType attackType, Unit const* victim) const
 {
     float chance = GetUnitCriticalChanceDone(attackType);
-    return victim->GetUnitCriticalChanceTaken(this, attackType, chance);
+    return victim->GetUnitCriticalChanceTaken(attackType, chance);
 }
 
 void Unit::_DeleteRemovedAuras()
@@ -6963,6 +6942,14 @@ uint32 Unit::SpellDamageBonusTaken(Unit* caster, SpellInfo const* spellProto, ui
             return false;
         });
 
+        // From avoidance
+        if (spellProto->IsAffectingArea() || spellProto->HasAreaAuraEffect())
+        {
+            TakenTotalMod *= GetTotalAuraMultiplierByMiscMask(SPELL_AURA_MOD_AOE_DAMAGE_AVOIDANCE, spellProto->SchoolMask);
+            if (caster->IsCreature())
+                TakenTotalMod *= GetTotalAuraMultiplierByMiscMask(SPELL_AURA_MOD_CREATURE_AOE_DAMAGE_AVOIDANCE, spellProto->SchoolMask);
+        }
+
         // From caster spells
         if (caster)
         {
@@ -7289,7 +7276,7 @@ float Unit::SpellCritChanceTaken(Unit const* caster, SpellInfo const* spellInfo,
                         break;
                     }
                 }
-                crit_chance = GetUnitCriticalChanceTaken(caster, attackType, crit_chance);
+                crit_chance = GetUnitCriticalChanceTaken(attackType, crit_chance);
             }
             break;
         case SPELL_DAMAGE_CLASS_NONE:
@@ -7298,7 +7285,7 @@ float Unit::SpellCritChanceTaken(Unit const* caster, SpellInfo const* spellInfo,
     }
 
     // for this types the bonus was already added in GetUnitCriticalChance, do not add twice
-    if (caster && spellInfo->DmgClass != SPELL_DAMAGE_CLASS_MELEE && spellInfo->DmgClass != SPELL_DAMAGE_CLASS_RANGED)
+    if (caster)
     {
         crit_chance += GetTotalAuraModifier(SPELL_AURA_MOD_CRIT_CHANCE_FOR_CASTER, [caster, spellInfo](AuraEffect const* aurEff) -> bool
         {
@@ -9232,6 +9219,7 @@ void Unit::AtEnterCombat()
             InterruptNonMeleeSpells(false);
 
     RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags::EnteringCombat);
+    ProcSkillsAndAuras(nullptr, PROC_FLAG_ENTER_COMBAT, PROC_FLAG_NONE, PROC_SPELL_TYPE_MASK_ALL, PROC_SPELL_PHASE_NONE, PROC_HIT_NONE, nullptr, nullptr, nullptr);
 }
 
 void Unit::AtExitCombat()

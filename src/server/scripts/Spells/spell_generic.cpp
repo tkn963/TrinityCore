@@ -3009,6 +3009,30 @@ class spell_gen_darkflight : public SpellScriptLoader
             return new spell_gen_darkflight_SpellScript();
         }
 };
+
+enum AlteredForm
+{
+    SPELL_ALTERED_FORM_PROC_AURA = 97681 // Serverside spell
+};
+
+class spell_gen_enable_worgen_altered_form : public AuraScript
+{
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ SPELL_ALTERED_FORM_PROC_AURA });
+    }
+
+    void HandleApply(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
+    {
+        GetTarget()->CastSpell(nullptr, SPELL_ALTERED_FORM_PROC_AURA, true);
+    }
+
+    void Register() override
+    {
+        AfterEffectApply.Register(&spell_gen_enable_worgen_altered_form::HandleApply, EFFECT_0, SPELL_AURA_ENABLE_ALTERED_FORM, AURA_EFFECT_HANDLE_REAL_OR_REAPPLY_MASK);
+    }
+};
+
 enum SeaforiumSpells
 {
     SPELL_PLANT_CHARGES_CREDIT_ACHIEVEMENT  = 60937
@@ -5349,6 +5373,24 @@ class spell_gen_wounded : public SpellScript
     }
 };
 
+// 69041 - Rocket Barrage (Racial)
+class spell_gen_rocket_barrage : public SpellScript
+{
+    void HandleDamage(SpellEffIndex effIndex)
+    {
+        Unit* caster = GetCaster();
+        int32 basePoints = GetEffectValue() + caster->getLevel() * 2;
+        basePoints += caster->SpellBaseDamageBonusDone(GetSpellInfo()->GetSchoolMask()) * GetSpellInfo()->Effects[effIndex].BonusMultiplier;
+        basePoints += caster->GetTotalAttackPowerValue(caster->getClass() != CLASS_HUNTER ? BASE_ATTACK : RANGED_ATTACK) * GetSpellInfo()->BonusCoefficient;
+        SetEffectValue(basePoints);
+    }
+
+    void Register() override
+    {
+        OnEffectLaunchTarget.Register(&spell_gen_rocket_barrage::HandleDamage, EFFECT_0, SPELL_EFFECT_SCHOOL_DAMAGE);
+    }
+};
+
 void AddSC_generic_spell_scripts()
 {
     new spell_gen_absorb0_hitlimit1();
@@ -5432,6 +5474,7 @@ void AddSC_generic_spell_scripts()
     new spell_gen_running_wild();
     new spell_gen_two_forms();
     new spell_gen_darkflight();
+    RegisterSpellScript(spell_gen_enable_worgen_altered_form);
     /*                          */
     new spell_gen_seaforium_blast();
     new spell_gen_spectator_cheer_trigger();
@@ -5481,4 +5524,5 @@ void AddSC_generic_spell_scripts()
     RegisterSpellScript(spell_gen_ghost);
     RegisterSpellScript(spell_gen_zero_energy_zero_regen);
     RegisterSpellScript(spell_gen_wounded);
+    RegisterSpellScript(spell_gen_rocket_barrage);
 }
