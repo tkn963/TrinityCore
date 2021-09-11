@@ -61,9 +61,6 @@ enum DeathKnightSpells
     SPELL_DK_DEATH_STRIKE_HEAL                  = 45470,
     SPELL_DK_DEATH_STRIKE_ENABLER               = 89832,
     SPELL_DK_EBON_PLAGUE                        = 65142,
-    SPELL_DK_ENERGIZE_BLOOD_RUNE                = 81166,
-    SPELL_DK_ENERGIZE_FROST_RUNE                = 81168,
-    SPELL_DK_ENERGIZE_UNHOLY_RUNE               = 81169,
     SPELL_DK_FLAMING_TORRENT                    = 99000,
     SPELL_DK_FROST_FEVER                        = 55095,
     SPELL_DK_FROST_PRESENCE                     = 48266,
@@ -1142,13 +1139,7 @@ class spell_dk_runic_empowerment : public AuraScript
 {
     bool Validate(SpellInfo const* /*spellInfo*/) override
     {
-        return ValidateSpellInfo(
-            {
-                SPELL_DK_ENERGIZE_BLOOD_RUNE,
-                SPELL_DK_ENERGIZE_FROST_RUNE,
-                SPELL_DK_ENERGIZE_UNHOLY_RUNE,
-                SPELL_DK_RUNIC_CORRUPTION_TRIGGERED
-            });
+        return ValidateSpellInfo({ SPELL_DK_RUNIC_CORRUPTION_TRIGGERED });
     }
 
     void HandleProc(AuraEffect const* aurEff, ProcEventInfo& /*eventInfo*/)
@@ -1166,37 +1157,34 @@ class spell_dk_runic_empowerment : public AuraScript
             return;
         }
 
-        std::vector<uint8> runesOnCooldown;
-        runesOnCooldown.reserve(MAX_RUNES);
+        std::vector<uint8> fullyDepletedRuneIndexes;
         for (uint8 i = 0; i < MAX_RUNES; ++i)
-            if (player->GetRuneCooldown(i))
-                runesOnCooldown.emplace_back(i);
-
-        if (runesOnCooldown.empty())
-            return;
-
-        uint8 runeIndex = Trinity::Containers::SelectRandomContainerElement(runesOnCooldown);
-        RuneType rune = player->GetCurrentRune(runeIndex);
-        switch (rune)
         {
-            case RUNE_BLOOD:
-            case RUNE_DEATH:
-                player->CastSpell(player, SPELL_DK_ENERGIZE_BLOOD_RUNE, aurEff);
-                break;
-            case RUNE_FROST:
-                player->CastSpell(player, SPELL_DK_ENERGIZE_FROST_RUNE, aurEff);
-                break;
-            case RUNE_UNHOLY:
-                player->CastSpell(player, SPELL_DK_ENERGIZE_UNHOLY_RUNE, aurEff);
-                break;
-            default:
-                break;
+            // Only activate fully depleted runes, which are being on hold until
+            if (player->GetRuneCooldown(i) != RUNE_BASE_COOLDOWN)
+                continue;
+
+            fullyDepletedRuneIndexes.push_back(i);
         }
+
+        if (!fullyDepletedRuneIndexes.empty())
+            if (uint8 runeIndex = Trinity::Containers::SelectRandomContainerElement(fullyDepletedRuneIndexes))
+                ActivateRune(player, runeIndex);
     }
 
     void Register() override
     {
         OnEffectProc.Register(&spell_dk_runic_empowerment::HandleProc, EFFECT_0, SPELL_AURA_DUMMY);
+    }
+
+private:
+    // Sniffs do not show any spell cast to activate runes. We just copy the code part from Spell::EffectActivateRune in this case with some small tweaks
+    void ActivateRune(Player* player, uint8 runeIndex)
+    {
+        uint8 currentRuneState = player->GetRunesState();
+        player->SetRuneCooldown(runeIndex, 0);
+        uint8 runesState = player->GetRunesState() & ~currentRuneState;
+        player->AddRunePower(runesState);
     }
 };
 
